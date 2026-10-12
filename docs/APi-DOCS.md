@@ -1,301 +1,350 @@
-# hubspot_deals - API Documentation
+# HubSpot Deals ETL — Service API Documentation
 
-## Table of Contents
-1. [Overview](#overview)
-2. [Authentication](#authentication)
-3. [Base URLs](#base-urls)
-4. [Deals API Endpoint](#deals-api-endpoint)
-5. [Query Parameters and Pagination](#query-parameters-and-pagination)
-6. [Response Format](#response-format)
-7. [Deal Properties](#deal-properties)
-8. [Rate Limiting](#rate-limiting)
-9. [Error Handling](#error-handling)
-10. [Examples](#examples)
-11. [References](#references)
-12. [Changelog](#changelog)
+**Project:** `hubspot-deals-etl`  
+**Service:** `hubspot_deals`  
+**Version:** 1.0.0 (documentation draft)  
+**Last updated:** 2026-10-10
 
-## Overview
+> **Implementation note:** This document adapts the supplied API documentation template for HubSpot deal extraction. Confirm every route, request field, response shape, status code, and download format against the routes/controllers in the generated service before treating it as an implemented contract. Remove any endpoint that is not present in the code. The HubSpot CRM API described below is the upstream API; it is separate from this service's own REST API.
 
-The `hubspot_deals` service integrates with HubSpot CRM to retrieve deal records for the `hubspot-deals-etl` project. It uses the HubSpot CRM Deals API and supports property selection and cursor-based pagination.
+## 1. Overview
 
-- **Project name:** `hubspot-deals-etl`
+The service is intended to extract deal records from HubSpot CRM API v3, track extraction jobs, and make extracted results available to callers.
+
 - **Service name:** `hubspot_deals`
-- **API version requested by this task:** CRM API v3
-- **HubSpot API base URL:** `https://api.hubapi.com`
-- **Content type:** `application/json`
-- **Main endpoint:** `GET /crm/v3/objects/deals`
+- **Local development port:** `5200`
+- **Staging port:** `5201` (deployment URL must be supplied by the environment)
+- **Production port:** `5202` (deployment URL must be supplied by the environment)
+- **Content type:** `application/json` for JSON requests and responses
+- **Local base URL:** `http://localhost:5200`
 
-> **Version/authentication note:** This document describes the requested CRM API v3 endpoint and private-app access-token pattern. Before using it in a new HubSpot account, check HubSpot's current migration guidance and supported authentication options. Do not assume legacy private-app creation remains available for every account or use case.
+No public staging or production hostname is specified in the project configuration, so those URLs should be filled in from deployment settings.
 
-## Authentication
+## 2. Authentication
 
-HubSpot API requests must include an access token authorized to read CRM deal records.
+### 2.1 HubSpot authentication (upstream API)
 
-### Private-app access token
-
-For an existing HubSpot private app that supports this authentication method, include the token in the HTTP `Authorization` header:
+HubSpot CRM API requests use a private-app access token:
 
 ```http
-Authorization: Bearer YOUR_ACCESS_TOKEN
+Authorization: Bearer <HUBSPOT_ACCESS_TOKEN>
 Content-Type: application/json
 ```
 
-The token must have the appropriate deal-reading permission, commonly `crm.objects.deals.read`.
+The private app must have the required read permission, typically `crm.objects.deals.read`, to retrieve deals. Store the token in an environment variable or secret manager; do not commit it to source control or log it.
 
-### Security requirements
+### 2.2 Authentication to this service
 
-- Store the token in an environment variable or secrets manager.
-- Never commit a real token to source control.
-- Do not include tokens in logs, screenshots, documentation, or error messages.
-- Rotate/revoke exposed credentials promptly.
-- Use only credentials authorized for the HubSpot account being accessed.
+The client-facing authentication mechanism for the generated service must be confirmed from its middleware and route configuration. Do not assume that the HubSpot token is also the authentication token for callers of this service. If the service expects the HubSpot token in a scan configuration, document the exact field only after verifying the request model/controller.
 
-Example environment variable:
+## 3. Base URLs
 
-```env
-HUBSPOT_ACCESS_TOKEN=replace_with_your_token
+| Environment | Base URL |
+|---|---|
+| Development | `http://localhost:5200` |
+| Staging | `https://<configured-staging-host>` |
+| Production | `https://<configured-production-host>` |
+
+Replace the staging and production placeholders with the actual deployed URLs.
+
+## 4. Service REST endpoints
+
+The following route shapes come from the supplied API template and are **candidate routes to verify in the generated application**. The route registry/controller code is authoritative.
+
+### 4.1 Start a deal extraction
+
+**Candidate route:** `POST /scan/start`
+
+Starts an extraction job for HubSpot deals.
+
+**Candidate request body** (adapt field names to the actual request schema):
+
+```json
+{
+  "config": {
+    "scanId": "hubspot-deals-scan-001",
+    "type": ["deals"],
+    "deal_ids": ["512", "513"]
+  }
+}
 ```
 
-The value above is a placeholder, not a working credential.
+If the implementation accepts credentials in the request configuration, use its exact documented field name. Prefer server-side environment/secret configuration where supported; never put a real access token in examples, logs, or committed files.
 
-## Base URLs
-
-### HubSpot API
-
-```text
-https://api.hubapi.com
-```
-
-### Deals endpoint
-
-```text
-https://api.hubapi.com/crm/v3/objects/deals
-```
-
-The generated service's own development, staging, and production ports (5200, 5201, and 5202) are separate from HubSpot's API host.
-
-## Deals API Endpoint
-
-### Retrieve deals
-
-**Method:** `GET`
-
-**Path:** `/crm/v3/objects/deals`
-
-**Full URL:** `https://api.hubapi.com/crm/v3/objects/deals`
-
-Returns a page of deal records accessible to the authenticated HubSpot account.
-
-### Request headers
-
-```http
-Authorization: Bearer YOUR_ACCESS_TOKEN
-Accept: application/json
-Content-Type: application/json
-```
-
-## Query Parameters and Pagination
-
-| Parameter | Type | Required | Description |
+| Field | Type | Required | Description |
 |---|---|---|---|
-| `limit` | integer | No | Maximum number of records to return in one page. The v3 endpoint supports up to 100 records per request. |
-| `after` | string | No | Cursor used to retrieve the next page. Use the `paging.next.after` value from the previous response. |
-| `properties` | comma-separated string | No | Deal property internal names to include, for example `dealname,amount,dealstage`. |
-| `archived` | boolean | No | Whether to include archived deals. Defaults to `false` when omitted. |
+| `config` | object | Confirm in code | Extraction configuration |
+| `config.scanId` | string | Confirm in code | Caller-supplied scan identifier |
+| `config.type` | string array | Confirm in code | Extraction type; use `deals` if supported |
+| `config.deal_ids` | string array | Optional, if supported | Optional list of specific HubSpot deal IDs |
 
-### Example request
+**Illustrative accepted response:**
 
-```http
-GET https://api.hubapi.com/crm/v3/objects/deals?limit=10&properties=dealname,amount,dealstage,pipeline,closedate&archived=false
+```json
+{
+  "message": "Deals extraction started",
+  "scanId": "hubspot-deals-scan-001",
+  "status": "started"
+}
 ```
 
-### Pagination workflow
+**Candidate status codes:** `202` accepted; `400` invalid request; `409` conflicting/in-progress scan; `500` internal error. Confirm the actual status codes in the handler.
 
-1. Send the first request with `limit`, for example `limit=100`.
-2. Process the `results` array.
-3. If `paging.next.after` exists, send another request using that value as the `after` parameter.
-4. Repeat until the response has no `paging.next` object.
+### 4.2 Get extraction status
 
-Example next-page request:
+**Candidate route:** `GET /scan/status/{scan_id}`
 
-```http
-GET https://api.hubapi.com/crm/v3/objects/deals?limit=100&after=NEXT_CURSOR
+Returns the current state of an extraction job.
+
+**Path parameter**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `scan_id` | string | Identifier used when the scan was started |
+
+**Illustrative response:**
+
+```json
+{
+  "scanId": "hubspot-deals-scan-001",
+  "status": "running",
+  "started_at": "2026-10-10T10:30:00Z",
+  "completed_at": null,
+  "error_message": null,
+  "total_items": 500,
+  "processed_items": 200,
+  "failed_items": 0
+}
 ```
 
-Treat the cursor as an opaque value returned by HubSpot; do not calculate it yourself.
+Possible job states, if implemented by the service: `pending`, `running`, `completed`, `failed`, `cancelled`. Confirm field names and not-found behavior in the actual response model.
 
-## Response Format
+**Candidate status codes:** `200` status returned; `400` invalid identifier; `404` job not found if the implementation uses HTTP 404; `500` internal error.
 
-A successful response contains a `results` array. Each deal generally includes an `id`, a `properties` object, creation/update timestamps, and an `archived` flag. A `paging.next` object is present when another page is available.
+### 4.3 Get extraction results
 
-### Sample JSON response
+**Candidate route:** `GET /scan/result/{scan_id}`
 
-The following is an illustrative example; the IDs, values, properties, and cursor are sample data.
+Returns the deals saved for a completed or partially completed scan.
+
+**Candidate query parameters** (verify supported pagination style):
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `page` | integer | `1` | Page number, if page-based pagination is implemented |
+| `page_size` | integer | `100` | Number of results per page, if supported |
+
+**Illustrative response:**
+
+```json
+{
+  "scanId": "hubspot-deals-scan-001",
+  "status": "completed",
+  "data": [
+    {
+      "deal_id": "512",
+      "dealname": "Example deal",
+      "amount": "12500.00",
+      "dealstage": "closedwon",
+      "pipeline": "default",
+      "_tenant_id": "tenant_1",
+      "_scan_id": "hubspot-deals-scan-001",
+      "_extracted_at": "2026-10-10T10:45:00Z"
+    }
+  ],
+  "count": 1,
+  "total_count": 1
+}
+```
+
+The example is illustrative. Return only fields that are actually stored and exposed by the implementation. Confirm whether results use `data`, `results`, a pagination object, or another response shape.
+
+**Candidate status codes:** `200` results returned; `400` invalid pagination/input; `404` scan not found; `500` internal error.
+
+### 4.4 Other routes in the template
+
+The original template also includes these candidate routes. Document them as supported endpoints only if they exist in the route registry:
+
+| Method | Candidate route | Purpose |
+|---|---|---|
+| `POST` | `/scan/cancel/{scan_id}` | Cancel a running scan |
+| `DELETE` | `/scan/remove/{scan_id}` | Delete a scan and its stored results |
+| `GET` | `/scan/download/{scan_id}/{format}` | Download results as JSON/CSV/Excel |
+| `GET` | `/health` | Health check |
+| `GET` | `/stats` | Service statistics |
+
+Do not claim a particular download format or health-check dependency unless the implementation supports it.
+
+## 5. Upstream HubSpot CRM API v3 — Deals
+
+This section describes the API called by the extraction service, not the service's own endpoints.
+
+### 5.1 List deals
+
+**Method:** `GET`  
+**Endpoint:** `https://api.hubapi.com/crm/v3/objects/deals`
+
+**Query parameters**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `limit` | integer | Maximum number of records in a page; use a supported value up to the API's documented maximum |
+| `after` | string | Pagination cursor returned by the previous response |
+| `properties` | comma-separated string | Deal properties to include in each record |
+| `archived` | boolean | Whether archived records are included |
+
+**Example request:**
+
+```bash
+curl --get "https://api.hubapi.com/crm/v3/objects/deals" \
+  --header "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN" \
+  --data-urlencode "limit=100" \
+  --data-urlencode "properties=dealname,amount,dealstage,pipeline,closedate,createdate,hs_lastmodifieddate" \
+  --data-urlencode "archived=false"
+```
+
+For subsequent pages, pass the `paging.next.after` cursor from the previous response as the `after` query parameter. Continue until no next cursor is returned.
+
+### 5.2 Example upstream response
 
 ```json
 {
   "results": [
     {
-      "id": "123456",
+      "id": "512",
       "properties": {
-        "dealname": "Enterprise Software Deal",
-        "amount": "15000",
-        "dealstage": "contractsent",
+        "dealname": "Example deal",
+        "amount": "12500",
+        "dealstage": "closedwon",
         "pipeline": "default",
-        "closedate": "2026-11-15T00:00:00Z",
-        "createdate": "2026-10-01T10:30:00Z",
-        "hs_lastmodifieddate": "2026-10-05T12:00:00Z"
+        "closedate": "2026-09-30T00:00:00Z",
+        "createdate": "2026-01-10T12:00:00Z",
+        "hs_lastmodifieddate": "2026-10-09T15:20:00Z"
       },
-      "createdAt": "2026-10-01T10:30:00Z",
-      "updatedAt": "2026-10-05T12:00:00Z",
+      "createdAt": "2026-01-10T12:00:00Z",
+      "updatedAt": "2026-10-09T15:20:00Z",
       "archived": false
     }
   ],
   "paging": {
     "next": {
-      "after": "123457",
-      "link": "https://api.hubapi.com/crm/v3/objects/deals?after=123457"
+      "after": "NTI="
     }
   }
 }
 ```
 
-If no further page is available, HubSpot may omit the `paging` field.
+The values above are sample data. The response may omit `paging` when there is no next page. HubSpot returns property values as strings in many cases; convert them to the appropriate database types during normalization.
 
-## Deal Properties
+### 5.3 Deal properties
 
-The `properties` query parameter accepts a comma-separated list of property **internal names**. Common standard deal properties include:
+Common properties may include `dealname`, `amount`, `dealstage`, `pipeline`, `closedate`, `createdate`, `hs_lastmodifieddate`, `hubspot_owner_id`, `dealtype`, and `description`. The properties available depend on the HubSpot account and installed configuration.
 
-| Internal name | Description |
-|---|---|
-| `dealname` | Deal name |
-| `amount` | Deal amount |
-| `dealstage` | Current deal stage |
-| `pipeline` | Pipeline containing the deal |
-| `closedate` | Expected or actual close date |
-| `createdate` | Date the deal was created |
-| `hs_lastmodifieddate` | Date the deal was last modified |
-| `hubspot_owner_id` | HubSpot owner ID |
-| `dealtype` | Deal type, when available |
-| `description` | Deal description |
-| `hs_priority` | Deal priority, when available |
-| `hs_object_id` | HubSpot object ID |
-| `hs_is_closed` | Indicates whether the deal is closed, when available |
-| `hs_is_closed_won` | Indicates whether the deal is closed-won, when available |
-| `hs_forecast_probability` | Forecast probability, when available |
-| `hs_forecast_amount` | Forecast amount, when available |
-| `hs_manual_forecast_category` | Manually assigned forecast category, when available |
-| `hs_deal_stage_probability` | Probability associated with the deal stage, when available |
+To retrieve the account's available deal properties, use:
 
-This is a representative list, **not a guaranteed exhaustive list**. Available properties can vary by HubSpot account, API behavior, and custom configuration. Do not assume every property above exists in every account.
+```http
+GET https://api.hubapi.com/crm/v3/properties/deals
+Authorization: Bearer <HUBSPOT_ACCESS_TOKEN>
+```
 
-### Retrieve all available deal properties
+Use the returned property `name` values when building the `properties` query parameter. Verify any forecast-probability property name against this endpoint before mapping it to the database.
 
-Use the HubSpot CRM Properties API:
+## 6. Error handling and status codes
 
-**Method:** `GET`
+### 6.1 Client-facing service errors
 
-**Endpoint:** `/crm/v3/properties/deals`
+The exact error payload depends on the generated service's exception handlers. A useful documented pattern, if it matches the implementation, is:
 
-**Full URL:** `https://api.hubapi.com/crm/v3/properties/deals`
+```json
+{
+  "status": "error",
+  "error_code": "VALIDATION_ERROR",
+  "message": "Input validation failed",
+  "details": {}
+}
+```
 
-Include the same `Authorization: Bearer YOUR_ACCESS_TOKEN` header. Inspect the returned `results` array for the account's available standard and custom properties. Property metadata can include fields such as `name`, `label`, `type`, `fieldType`, and `description`.
-
-To document every property available in a particular HubSpot account, capture the actual authorized endpoint response rather than treating the representative list above as exhaustive.
-
-## Rate Limiting
-
-HubSpot enforces API usage limits. The applicable limit can depend on the app/authentication type, account subscription, and endpoint.
-
-Recommended handling:
-
-- Check HubSpot's current official rate-limit documentation for the limits applicable to the integration.
-- Handle HTTP `429 Too Many Requests` responses.
-- Honor a `Retry-After` header when provided.
-- Use bounded exponential backoff with jitter for retryable rate-limit or transient server errors.
-- Avoid retrying invalid requests or authentication failures without first fixing the cause.
-- Request only the properties needed and use pagination to process records efficiently.
-- Avoid logging access tokens or other secrets.
-
-Do not hard-code a single numeric quota unless it has been verified for the relevant HubSpot account and authentication method.
-
-## Error Handling
-
-| HTTP status | Meaning | Recommended action |
+| HTTP status | Meaning | Client action |
 |---|---|---|
-| `400 Bad Request` | Invalid parameter, malformed request, or invalid property | Check query syntax and property internal names. |
-| `401 Unauthorized` | Missing, invalid, or expired token | Verify the credential and `Authorization` header. |
-| `403 Forbidden` | The credential lacks required access | Check the app's permissions/scopes and account access. |
-| `404 Not Found` | Endpoint or requested resource not found | Verify the URL and resource identifier. |
-| `429 Too Many Requests` | Rate limit exceeded | Honor `Retry-After` if present and retry with bounded backoff. |
-| `5xx` | HubSpot server-side or temporary error | Retry transient failures with bounded exponential backoff and jitter. |
+| `400` | Invalid input or validation failure | Correct the request |
+| `401` | Missing or invalid client credentials, if service auth is enabled | Authenticate correctly |
+| `403` | Caller lacks permission | Check access policy |
+| `404` | Scan or result does not exist | Check the scan ID |
+| `409` | Conflicting operation, if implemented | Check current scan status |
+| `429` | Service rate limit reached, if implemented | Retry after the indicated delay |
+| `500` | Unexpected service error | Inspect server logs; retry only when safe |
+| `503` | Service temporarily unavailable, if implemented | Retry with backoff |
 
-### Error-handling guidelines
+These are conventional meanings, not a guarantee that every status is currently returned. Update this table after checking the route handlers and global error middleware.
 
-1. Check the HTTP status code before processing the response as a successful result.
-2. Parse HubSpot's error response when possible and record a safe, useful diagnostic.
-3. Never log the access token.
-4. Set connection/read timeouts in the HTTP client.
-5. Limit retry attempts and avoid infinite retry loops.
-6. Do not repeatedly retry `400`, `401`, or `403` errors without correcting the request or credentials.
+### 6.2 Upstream HubSpot errors
 
-HubSpot's error payload may differ from the generated service's own error-response format. If this service wraps upstream errors, document both formats separately.
+Handle HubSpot API errors separately from errors returned by the extraction service:
 
-## Examples
+- `401 Unauthorized`: token is missing, invalid, or expired.
+- `403 Forbidden`: the private app may lack the required CRM read scope.
+- `429 Too Many Requests`: HubSpot rate limit reached; respect any retry guidance in the response headers/body and use exponential backoff with jitter.
+- `5xx`: transient upstream service failure; retry with bounded backoff where safe.
+- Other `4xx`: inspect the request, query parameters, object properties, and response body before retrying.
 
-### cURL: Retrieve deals
+Do not retry permanent validation/authentication errors without first correcting the cause. Avoid logging access tokens or sensitive response data.
+
+## 7. Example workflow
+
+The following calls use the candidate service routes from the template. Run them only after verifying that these routes are registered by the application.
+
+### Step 1 — Start extraction
 
 ```bash
-curl --request GET \
-  --url 'https://api.hubapi.com/crm/v3/objects/deals?limit=10&properties=dealname,amount,dealstage,pipeline,closedate&archived=false' \
-  --header 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
-  --header 'Accept: application/json'
+curl -X POST "http://localhost:5200/scan/start" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config": {
+      "scanId": "hubspot-deals-scan-001",
+      "type": ["deals"],
+      "deal_ids": ["512", "513"]
+    }
+  }'
 ```
 
-Replace `YOUR_ACCESS_TOKEN` with a valid token supplied securely. Do not paste a real token into documentation or commit it to Git.
+### Step 2 — Check status
 
-### Python: Retrieve deals
-
-```python
-import os
-import requests
-
-url = "https://api.hubapi.com/crm/v3/objects/deals"
-token = os.environ["HUBSPOT_ACCESS_TOKEN"]
-
-headers = {
-    "Authorization": f"Bearer {token}",
-    "Accept": "application/json",
-}
-
-params = {
-    "limit": 100,
-    "properties": "dealname,amount,dealstage,pipeline,closedate",
-    "archived": "false",
-}
-
-response = requests.get(url, headers=headers, params=params, timeout=30)
-response.raise_for_status()
-data = response.json()
-
-for deal in data.get("results", []):
-    print(deal["id"], deal.get("properties", {}).get("dealname"))
-
-# If data.get("paging", {}).get("next") exists, use its "after" value
-# to request the next page.
+```bash
+curl "http://localhost:5200/scan/status/hubspot-deals-scan-001"
 ```
 
-The code expects `HUBSPOT_ACCESS_TOKEN` to be configured in the environment. It intentionally does not contain a real token.
+### Step 3 — Retrieve results
 
-## References
+```bash
+curl "http://localhost:5200/scan/result/hubspot-deals-scan-001?page=1&page_size=100"
+```
 
-- [HubSpot CRM Deals API v3 guide](https://developers.hubspot.com/docs/api-reference/crm-deals-v3/guide)
-- [HubSpot CRM Properties API v3 guide](https://developers.hubspot.com/docs/api-reference/crm-properties-v3/guide)
-- [HubSpot API usage guidelines and rate limits](https://developers.hubspot.com/docs/developer-tooling/platform/usage-guidelines)
-- [HubSpot authentication guidance](https://developers.hubspot.com/docs/apps/legacy-apps/private-apps/overview)
+If the actual implementation uses a different payload or pagination scheme, update the examples to match it.
 
-## Changelog
+## 8. Rate limits and operational guidance
 
-| Version | Change |
-|---|---|
-| 1.0.0 | Reworked the generic template for the `hubspot_deals` service; documented the deals endpoint, authentication, query parameters, pagination, response example, properties, rate limiting, and error handling. |
+- Apply bounded retries with exponential backoff and jitter for transient upstream failures.
+- Respect HubSpot rate-limit response headers and retry guidance.
+- Use cursor-based pagination through the `after` parameter; do not assume one request returns every deal.
+- Request only the properties needed for the extraction.
+- Record scan status, counts, timestamps, and sanitized error details for troubleshooting.
+- Keep access tokens in environment variables or a secret manager; never commit secrets to Git.
+- Confirm whether the service itself implements request throttling, retry scheduling, cancellation, and scan locking before documenting those as available features.
+
+## 9. Pre-submission verification checklist
+
+- [ ] Confirm actual service routes from the registered router/application.
+- [ ] Confirm request validation and exact required fields for starting a scan.
+- [ ] Confirm whether client-facing authentication is enabled and how it works.
+- [ ] Confirm actual response JSON for start, status, and results.
+- [ ] Confirm HTTP status codes and error payloads from route handlers.
+- [ ] Confirm whether cancel, remove, download, health, and stats routes exist.
+- [ ] Confirm the HubSpot token is read securely and is never logged or committed.
+- [ ] Test a start-scan request and retrieve results from a real local run.
+- [ ] Ensure database result fields match `DATABASE-DESIGN-DOCS.md`.
+
+## 10. Changelog
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0.0 | 2026-10-10 | Adapted the API documentation template for HubSpot Deals ETL; documented candidate service routes, upstream HubSpot API, request/response examples, authentication, and error handling. |
