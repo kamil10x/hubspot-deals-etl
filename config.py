@@ -1,6 +1,8 @@
 import os
 from typing import Dict, Any
 
+from dotenv import load_dotenv
+load_dotenv()
 
 class Config:
     """Base application configuration"""
@@ -49,6 +51,24 @@ class Config:
     API_TEAMS_ENDPOINT = os.environ.get('API_TEAMS_ENDPOINT', '/teams')
     API_RETRY_ATTEMPTS = int(os.environ.get('API_RETRY_ATTEMPTS', 3))
     API_RETRY_DELAY = int(os.environ.get('API_RETRY_DELAY', 1))
+    
+    
+    # HubSpot API settings
+    HUBSPOT_ACCESS_TOKEN = os.environ.get('HUBSPOT_ACCESS_TOKEN', '')
+    HUBSPOT_API_BASE_URL = os.environ.get(
+        'HUBSPOT_API_BASE_URL',
+        'https://api.hubapi.com'
+    )
+    HUBSPOT_API_TIMEOUT = int(
+        os.environ.get('HUBSPOT_API_TIMEOUT', 30)
+    )
+    HUBSPOT_API_RATE_LIMIT = int(
+        os.environ.get('HUBSPOT_API_RATE_LIMIT', 150)
+    )
+    HUBSPOT_RATE_LIMIT_WINDOW_SECONDS = int(
+        os.environ.get('HUBSPOT_RATE_LIMIT_WINDOW_SECONDS', 10)
+    )
+
     
     # Extraction service settings
     MAX_CONCURRENT_SCANS = int(os.environ.get('MAX_CONCURRENT_SCANS', 5))
