@@ -28,5 +28,5 @@ Thumbs.db
 .idea/
 
 #Local files
-test_*.py
-!test_data_source.py
+# test_*.py
+# !test_data_source.py
