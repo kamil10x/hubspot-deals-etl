@@ -2,9 +2,54 @@ import dlt
 import logging
 from typing import Dict, List, Any, Iterator, Optional, Callable
 from datetime import datetime, timezone
-from .api_service import APIService
+# from .api_service import APIService
+from .hubspot_api_service import HubSpotAPIService
 from loki_logger import get_logger, log_business_event, log_security_event
-from .api_service import APIService
+from datetime import datetime, timezone, date
+
+def transform_hubspot_deal(
+    record: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Flatten and normalize a HubSpot deal record."""
+    properties = record.get("properties") or {}
+
+    deal = {
+        "id": str(record["id"]),
+        **properties,
+    }
+
+    # Convert amount to a numeric value.
+    amount = deal.get("amount")
+    if amount not in (None, ""):
+        try:
+            deal["amount"] = float(amount)
+        except (TypeError, ValueError):
+            deal["amount"] = None
+
+    # Normalize HubSpot date fields.
+    for field in ("createdate", "closedate", "hs_lastmodifieddate"):
+        value = deal.get(field)
+
+        if value in (None, ""):
+            continue
+
+        try:
+            if isinstance(value, (int, float)) or str(value).isdigit():
+                timestamp = float(value) / 1000
+                deal[field] = datetime.fromtimestamp(
+                    timestamp, tz=timezone.utc
+                ).isoformat()
+            else:
+                parsed = datetime.fromisoformat(
+                    str(value).replace("Z", "+00:00")
+                )
+                deal[field] = parsed.isoformat()
+        except (ValueError, TypeError, OverflowError, OSError):
+            # Preserve the original value if it cannot be parsed.
+            pass
+
+    return deal
+
 
 def create_data_source(
     job_config: Dict[str, Any],
@@ -19,7 +64,9 @@ def create_data_source(
     Create DLT source function for Hubspot_Deals data extraction with checkpoint support
     """
     logger = get_logger(__name__)
-    api_service = APIService(base_url="https://api.hubapi.com" , test_delay_seconds=1)
+    api_service = HubSpotAPIService(
+        access_token=auth_config.get("accessToken")
+    )
 
     access_token = auth_config.get("accessToken")
     if not access_token:
@@ -40,7 +87,11 @@ def create_data_source(
         },
     )
 
-    @dlt.resource(name="hubspot_deals", write_disposition="replace", primary_key="id")
+    @dlt.resource(
+        name="hubspot_deals",
+        write_disposition="merge",
+        primary_key="id",
+    )
     def get_main_data() -> Iterator[Dict[str, Any]]:
         """
         Extract main data from Hubspot_Deals API with checkpoint support
@@ -178,8 +229,21 @@ def create_data_source(
                 )
 
                 # TODO: Replace with appropriate Hubspot_Deals API call
-                data = api_service.get_data(
-                    access_token=access_token, limit=1, after=after,
+                data = api_service.get_deals_page(
+                    limit=100,
+                    after=after,
+                    properties=filters.get(
+                        "properties",
+                        [
+                            "dealname",
+                            "amount",
+                            "dealstage",
+                            "pipeline",
+                            "closedate",
+                            "createdate",
+                            "hs_lastmodifieddate",
+                        ],
+                    ),
                 )
 
                 page_records = 0
@@ -221,6 +285,22 @@ def create_data_source(
                                             "service": "hubspot_deals",
                                         },
                                     }
+                                    
+                                    # mid_page_checkpoint = {
+                                    #     "phase": "main_data_paused_mid_page",
+                                    #     "records_processed": total_records + page_records,
+                                    #     "cursor": after,
+                                    #     "page_number": page_count,
+                                    #     "batch_size": 100,
+                                    #     "checkpoint_data": {
+                                    #         "pause_reason": "user_requested_mid_page",
+                                    #         "paused_at_page": page_count,
+                                    #         "records_completed_in_page": page_records,
+                                    #         "paused_at": datetime.now(timezone.utc).isoformat(),
+                                    #         "service": "hubspot_deals",
+                                    #     },
+                                    # }
+
                                     checkpoint_callback(job_id, mid_page_checkpoint)
                                 except Exception as e:
                                     logger.warning(
@@ -230,31 +310,36 @@ def create_data_source(
                             return  # Exit the generator
 
                         # Filter properties if specified
-                        if "properties" in filters and filters["properties"]:
-                            filtered_record = {
-                                prop: record.get(prop)
-                                for prop in filters["properties"]
-                                if prop in record
-                            }
-                            filtered_record["id"] = record.get("id")  # Always keep ID
-                        else:
-                            filtered_record = record
+                        #
+                        # Transform the HubSpot deal.
+                        filtered_record = transform_hubspot_deal(record)
 
-                        # Add extraction metadata
-                        filtered_record.update(
-                            {
-                                "_extracted_at": datetime.now(timezone.utc).isoformat(),
-                                "_scan_id": filters.get("scan_id", "unknown"),
-                                "_organization_id": filters.get(
-                                    "organization_id", "unknown"
-                                ),
-                                "_page_number": page_count + 1,
-                                "_source_service": "hubspot_deals",
+                        # Apply requested property filtering while retaining the ID.
+                        requested_properties = filters.get("properties")
+                        if requested_properties:
+                            allowed_fields = set(requested_properties) | {"id"}
+                            filtered_record = {
+                                key: value
+                                for key, value in filtered_record.items()
+                                if key in allowed_fields
                             }
-                        )
+
+                        # Add extraction metadata.
+                        filtered_record.update({
+                            "_extracted_at": datetime.now(timezone.utc).isoformat(),
+                            "_scan_id": filters.get("scan_id", "unknown"),
+                            "_organization_id": (
+                                job_config.get("organizationId")
+                                or filters.get("organization_id", "unknown")
+                            ),
+                            "_page_number": page_count + 1,
+                            "_source_service": "hubspot_deals",
+                        })
 
                         yield filtered_record
                         page_records += 1
+
+                        #
 
                 # Update counters
                 total_records += page_records

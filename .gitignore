@@ -29,3 +29,4 @@ Thumbs.db
 
 #Local files
 test_*.py
+!test_data_source.py

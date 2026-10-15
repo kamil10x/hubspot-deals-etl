@@ -88,9 +88,9 @@ class HubSpotAPIService:
 
         logger.info("HubSpot API service initialized")
 
-    # ------------------------------------------------------------------
+    
     # Rate limiting
-    # ------------------------------------------------------------------
+    
     def _wait_for_rate_limit(self) -> None:
         """Block until a request slot is free (150 requests / 10 seconds)."""
         while True:
@@ -114,9 +114,8 @@ class HubSpotAPIService:
             logger.debug("Local rate limit reached; sleeping %.2fs", wait_time)
             time.sleep(max(wait_time, 0.01))
 
-    # ------------------------------------------------------------------
     # Error handling
-    # ------------------------------------------------------------------
+    
     def _raise_http_error(self, response: requests.Response, endpoint: str) -> None:
         """Log HubSpot's error details and raise a descriptive error."""
         status = response.status_code
@@ -146,9 +145,8 @@ class HubSpotAPIService:
 
         raise HubSpotAPIError(f"HubSpot API returned HTTP {status}: {hint}")
 
-    # ------------------------------------------------------------------
     # Core request
-    # ------------------------------------------------------------------
+    
     def _request(
         self,
         endpoint: str,
@@ -253,9 +251,8 @@ class HubSpotAPIService:
 
         raise HubSpotAPIError("HubSpot request failed after retries.")
 
-    # ------------------------------------------------------------------
     # Public methods
-    # ------------------------------------------------------------------
+
     def validate_credentials(self) -> bool:
         """Check whether the token can access CRM deals."""
         if not self.access_token:
@@ -273,6 +270,27 @@ class HubSpotAPIService:
         except HubSpotAPIError as exc:
             logger.warning("HubSpot credential validation failed: %s", exc)
             return False
+        
+    def get_deals_page(
+        self,
+        limit: int = 100,
+        after: Optional[str] = None,
+        properties: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Fetch one page of HubSpot deals for checkpointed extraction."""
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100.")
+
+        params: Dict[str, Any] = {"limit": limit}
+
+        if after:
+            params["after"] = after
+
+        if properties:
+            params["properties"] = ",".join(properties)
+
+        return self._request("/crm/v3/objects/deals", params=params)
+
 
     def get_deals(
         self,
