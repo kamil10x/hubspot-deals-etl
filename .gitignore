@@ -1,32 +1,66 @@
-# Secrets - never commit
+# =========================
+# Environment / Secrets
+# =========================
 .env
 .env.*
 !.env.example
-*.pem
-*.key
+
+# Local scan request may contain HubSpot access token
+scan-request.json
 
 # Python
+
 __pycache__/
 *.py[cod]
-.pytest_cache/
-venv/
-.venv/
+*$py.class
 
-# DLT working files and local state
-.dlt/secrets.toml
-.dlt/pipelines/
-*.duckdb
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing / Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
 
 # Logs
-logs/*.log
+logs/
 *.log
 
-# OS and editor
-.DS_Store
-Thumbs.db
+# IDE / Editor
 .vscode/
 .idea/
+*.swp
+*.swo
 
-#Local files
-# test_*.py
-# !test_data_source.py
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Generated API / Swagger files
+swagger.json
+
+# DLT local state
+.dlt/
+
+# Build / distribution
+build/
+dist/
+*.egg-info/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3

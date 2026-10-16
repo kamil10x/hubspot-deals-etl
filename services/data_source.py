@@ -1,7 +1,6 @@
 import dlt
 import logging
 from typing import Dict, List, Any, Iterator, Optional, Callable
-from datetime import datetime, timezone
 # from .api_service import APIService
 from .hubspot_api_service import HubSpotAPIService
 from loki_logger import get_logger, log_business_event, log_security_event
@@ -95,11 +94,9 @@ def create_data_source(
     def get_main_data() -> Iterator[Dict[str, Any]]:
         """
         Extract main data from Hubspot_Deals API with checkpoint support
-
-        TODO: Customize for Hubspot_Deals:
-        - Update resource name and primary_key
-        - Adjust API calls and pagination
-        - Modify data transformation logic
+        
+        # HubSpot Deals extraction with cursor-based pagination and transformation.
+        
         """
 
         # Initialize state
@@ -228,7 +225,8 @@ def create_data_source(
                     },
                 )
 
-                # TODO: Replace with appropriate Hubspot_Deals API call
+                # TODO: Replace with appropriate Hubspot_Deals API call - Done
+                # Process HubSpot Deals API response.
                 data = api_service.get_deals_page(
                     limit=100,
                     after=after,
@@ -248,7 +246,8 @@ def create_data_source(
 
                 page_records = 0
 
-                # TODO: Update data processing based on Hubspot_Deals response structure
+                # TODO: Update data processing based on Hubspot_Deals response structure - Done
+                # Determine the cursor for the next checkpoint.
                 data_key = "results"  # Update based on API response
                 if data_key in data and data[data_key]:
                     for record in data[data_key]:
@@ -348,7 +347,8 @@ def create_data_source(
                 # Save checkpoint periodically
                 if checkpoint_callback and page_count % checkpoint_interval == 0:
                     try:
-                        # TODO: Update pagination logic based on Hubspot_Deals API
+                        # TODO: Update pagination logic based on Hubspot_Deals API - Done
+                        # Determine the cursor for the next checkpoint.
                         next_cursor = None
                         if (
                             data.get("paging")
@@ -392,7 +392,8 @@ def create_data_source(
                             },
                         )
 
-                # TODO: Handle pagination based on Hubspot_Deals API response
+                # TODO: Handle pagination based on Hubspot_Deals API response - Done
+                # Continue with the next HubSpot page or complete extraction.
                 if (
                     data.get("paging")
                     and data["paging"].get("next")
